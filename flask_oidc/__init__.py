@@ -410,7 +410,61 @@ class OpenIDConnect(object):
 
     def _before_request(self):
         g.oidc_id_token = None
+        self.refresh_access_token()
         self.authenticate_or_redirect()
+
+    def refresh_access_token(self):
+        """
+        refresh access token or redirect to oidc provider
+        """
+        # the auth callback and error pages don't need user to be authenticated
+        if request.endpoint in frozenset(['_oidc_callback', '_oidc_error']):
+            return None
+
+        # retrieve access_token
+        id_token = self._get_cookie_id_token()
+        if id_token is None:
+            return self.redirect_to_auth_server(request.url)
+        # get credentials from store
+        try:
+            credentials = OAuth2Credentials.from_json(
+                self.credentials_store[id_token['sub']])
+        except KeyError:
+            logger.debug("Expired ID token, credentials missing",
+                         exc_info=True)
+            return self.redirect_to_auth_server(request.url)
+
+        # access token expired
+        if credentials.access_token_expired:
+
+            # refresh and store credentials
+            try:
+                credentials.refresh(httplib2.Http())
+                if credentials.id_token:
+                    id_token = credentials.id_token
+                else:
+                    # It is not guaranteed that we will get a new ID Token on
+                    # refresh, so if we do not, let's just update the id token
+                    # expiry field and reuse the existing ID Token.
+                    if credentials.token_expiry is None:
+                        logger.debug('Expired ID token, no new expiry. Falling'
+                                     ' back to assuming 1 hour')
+                        id_token['exp'] = time.time() + 3600
+                    else:
+                        id_token['exp'] = calendar.timegm(
+                            credentials.token_expiry.timetuple())
+                self.credentials_store[id_token['sub']] = credentials.to_json()
+                self._set_cookie_id_token(id_token)
+            except AccessTokenRefreshError:
+                # Can't refresh. Wipe credentials and redirect user to IdP
+                # for re-authentication.
+                logger.debug("Expired ID token, can't refresh credentials",
+                             exc_info=True)
+                del self.credentials_store[id_token['sub']]
+                return self.redirect_to_auth_server(request.url)
+
+        # make ID token available to views
+        g.oidc_id_token = id_token
 
     def authenticate_or_redirect(self):
         """
