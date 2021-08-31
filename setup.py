@@ -21,13 +21,13 @@ with io.open(os.path.join(here, 'README.rst')) as f:
     readme = f.read()
 
 setup(
-    name='flask-oidc',
+    name='flask-oidc-neogeo',
     description='OpenID Connect extension for Flask',
     long_description=readme,
-    url='https://github.com/puiterwijk/flask-oidc',
+    url='https://github.com/neogeo-technologies/flask-oidc',
     author='Erica Ehrhardt, Patrick Uiterwijk',
     author_email='patrick@puiterwijk.org',
-    version='1.4.0',
+    version='1.5.1',
     packages=[
         'flask_oidc',
     ],
